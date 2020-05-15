@@ -29,7 +29,7 @@ class HealpixSubsetSlicer(BaseSpatialSlicer):
     Parameters
     ----------
     nside : int
-        The nside parameter of the healpix grid. Must be a power of 2.
+        The nside parameter of the healpix grid. Using RING ordering.
     hpid : np.ndarray
         The subset of healpix id's to use to calculate the metric.
         Because the hpid should be defined based on a particular nside, these first two
@@ -87,13 +87,9 @@ class HealpixSubsetSlicer(BaseSpatialSlicer):
                          badval=badval, radius=radius, leafsize=leafsize,
                          useCamera=useCamera, rotSkyPosColName=rotSkyPosColName,
                          mjdColName=mjdColName, chipNames=chipNames, latLonDeg=latLonDeg)
-        # Valid values of nside are powers of 2.
         # nside=64 gives about 1 deg resolution
         # nside=256 gives about 13' resolution (~1 CCD)
         # nside=1024 gives about 3' resolution
-        # Check validity of nside:
-        if not(hp.isnsideok(nside)):
-            raise ValueError('Valid values of nside are powers of 2.')
         if len(hpid) > hp.nside2npix(nside):
             raise ValueError('Nside (%d) and length of hpid (%d) seem incompatible.' % (nside,
                                                                                         hp.nside2npix(nside)))
@@ -142,7 +138,7 @@ class HealpixSubsetSlicer(BaseSpatialSlicer):
         # Calculate RA/Dec in RADIANS of pixel in this healpix slicer.
         # Note that ipix could be an array,
         # in which case RA/Dec values will be an array also.
-        lat, ra = hp.pix2ang(self.nside, islice)
+        lat, ra = hp.pix2ang(self.nside, islice, nest=False)
         # Move dec to +/- 90 degrees
         dec = np.pi/2.0 - lat
         return ra, dec

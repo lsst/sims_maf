@@ -82,11 +82,6 @@ class TestHealpixSlicerSetup(unittest.TestCase):
             testslicer = HealpixSlicer(nside=nside, verbose=False)
             self.assertEqual(testslicer.nslice, npix)
 
-    def testNsidesError(self):
-        """Test that if passed an incorrect value for nsides that get expected exception."""
-        # FIXME: This used to throw an exception. We comment it out for now.
-        # self.assertRaises(ValueError, HealpixSlicer, nside=3)
-
 
 class TestHealpixSlicerEqual(unittest.TestCase):
 

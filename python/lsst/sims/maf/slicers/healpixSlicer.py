@@ -35,7 +35,7 @@ class HealpixSlicer(BaseSpatialSlicer):
     Parameters
     ----------
     nside : int, optional
-        The nside parameter of the healpix grid. Must be a power of 2.
+        The nside parameter of the healpix grid.
         Default 128.
     lonCol : str, optional
         Name of the longitude (RA equivalent) column to use from the input data.
@@ -85,19 +85,17 @@ class HealpixSlicer(BaseSpatialSlicer):
                  useCamera=False, rotSkyPosColName='rotSkyPos',
                  mjdColName='observationStartMJD', chipNames='all'):
         """Instantiate and set up healpix slicer object."""
-        super(HealpixSlicer, self).__init__(verbose=verbose,
-                                            lonCol=lonCol, latCol=latCol,
-                                            badval=badval, radius=radius, leafsize=leafsize,
-                                            useCamera=useCamera, rotSkyPosColName=rotSkyPosColName,
-                                            mjdColName=mjdColName, chipNames=chipNames, latLonDeg=latLonDeg)
+        super().__init__(verbose=verbose,
+                         lonCol=lonCol, latCol=latCol,
+                         badval=badval, radius=radius, leafsize=leafsize,
+                         useCamera=useCamera, rotSkyPosColName=rotSkyPosColName,
+                         mjdColName=mjdColName, chipNames=chipNames, latLonDeg=latLonDeg)
         # Valid values of nside are powers of 2.
         # nside=64 gives about 1 deg resolution
         # nside=256 gives about 13' resolution (~1 CCD)
         # nside=1024 gives about 3' resolution
-        # Check validity of nside:
-        if not(hp.isnsideok(nside)):
-            raise ValueError('Valid values of nside are powers of 2.')
         self.nside = int(nside)
+        # pixArea in sq radians
         self.pixArea = hp.nside2pixarea(self.nside)
         self.nslice = hp.nside2npix(self.nside)
         self.spatialExtent = [0, self.nslice-1]
@@ -142,7 +140,7 @@ class HealpixSlicer(BaseSpatialSlicer):
         # Calculate RA/Dec in RADIANS of pixel in this healpix slicer.
         # Note that ipix could be an array,
         # in which case RA/Dec values will be an array also.
-        lat, ra = hp.pix2ang(self.nside, islice)
+        lat, ra = hp.pix2ang(self.nside, islice, nest=False, lonlat=False)
         # Move dec to +/- 90 degrees
         dec = np.pi/2.0 - lat
         return ra, dec

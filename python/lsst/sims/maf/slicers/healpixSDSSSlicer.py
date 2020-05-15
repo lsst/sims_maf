@@ -12,10 +12,10 @@ class HealpixSDSSSlicer(HealpixSlicer):
     def __init__(self, nside=128, lonCol ='RA1' , latCol='Dec1', verbose=True,
                  useCache=True, radius=17./60., leafsize=100, **kwargs):
         """Using one corner of the chip as the spatial key and the diagonal as the radius.  """
-        super(HealpixSDSSSlicer,self).__init__(verbose=verbose,
-                                            lonCol=lonCol, latCol=latCol,
-                                            radius=radius, leafsize=leafsize,
-                                            useCache=useCache,nside=nside )
+        super().__init__(verbose=verbose,
+                         lonCol=lonCol, latCol=latCol,
+                         radius=radius, leafsize=leafsize,
+                         useCache=useCache, nside=nside)
         self.cornerLables = ['RA1', 'Dec1', 'RA2','Dec2','RA3','Dec3','RA4','Dec4']
         self.plotFuncs = [HealpixSDSSSkyMap,]
 
@@ -37,10 +37,12 @@ class HealpixSDSSSlicer(HealpixSlicer):
             initIndices = self.opsimtree.query_ball_point((sx, sy, sz), self.rad)
             # Loop through all the images and check if the slicepoint is inside the corners of the chip
             # XXX--should check if there's a better/faster way to do this.
-            # Maybe in the setupSlicer loop through each image, and use the contains_points method to test all the
-            # healpixels simultaneously?  Then just have a dict with keys = healpix id and values = list of indices?
-            # That way _sliceSimData is just doing a dict look-up and we can get rid of the spatialkey kwargs.
-
+            # Maybe in the setupSlicer loop through each image, and use the contains_points
+            # method to test all the
+            # healpixels simultaneously?  Then just have a dict with keys = healpix id and
+            # values = list of indices?
+            # That way _sliceSimData is just doing a dict look-up and we can get rid of
+            # the spatialkey kwargs.
 
             indices=[]
             # Gnomic project all the corners that are near the slice point, centered on slice point
