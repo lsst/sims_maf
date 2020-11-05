@@ -121,12 +121,14 @@ class BaseMetric(with_metaclass(MetricRegistry, object)):
         If not set, will be derived by introspection.
     badval : float
         The value indicating "bad" values calculated by the metric.
+    season_gap : float (80)
+        The gap between observations to consider something a new season (days).
     """
     colRegistry = ColRegistry()
     colInfo = ColInfo()
 
     def __init__(self, col=None, metricName=None, maps=None, units=None,
-                 metricDtype=None, badval=-666, maskVal=None):
+                 metricDtype=None, badval=-666, maskVal=None, season_gap=80.):
         # Turn cols into numpy array so we know we can iterate over the columns.
         self.colNameArr = np.array(col, copy=False, ndmin=1)
         # To support simple metrics operating on a single column, set self.colname
@@ -176,6 +178,8 @@ class BaseMetric(with_metaclass(MetricRegistry, object)):
         # Default to only return one metric value per slice
         self.shape = 1
 
+        self.season_gap = season_gap
+
     def run(self, dataSlice, slicePoint=None):
         """Calculate metric values.
 
@@ -194,3 +198,35 @@ class BaseMetric(with_metaclass(MetricRegistry, object)):
             The metric value at each slicePoint.
         """
         raise NotImplementedError('Please implement your metric calculation.')
+
+    def seasonCalc(self, obs):
+        """
+        Method to estimate seasons
+
+        Parameters
+        --------------
+       obs: numpy array
+          array of observations
+        season_gap: float, opt
+          minimal gap required to define a season (default: 80 days)
+        mjdCol: str, opt
+          col name for MJD infos (default: observationStartMJD)
+
+        Returns
+        ----------
+        original numpy array sorted and season
+
+        """
+
+        obs.sort(order=self.mjdCol)
+        season = np.zeros(obs.size, dtype=int)
+
+        if len(obs) == 1:
+            return obs, season
+
+        diff = obs[self.mjdCol][1:]-obs[self.mjdCol][:-1]
+        flag = np.where(diff > self.season_gap)[0]
+        for i, indx in enumerate(flag):
+            season[indx+1:] = i+1
+
+        return obs, season

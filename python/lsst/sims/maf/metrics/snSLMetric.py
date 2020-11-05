@@ -155,39 +155,3 @@ class SNSLMetric(metrics.BaseMetric):
             2.5 / (2.15 * np.exp(0.37 * gap_median))
 
         return N_lensed_SNe_Ia
-
-    def seasonCalc(self, obs):
-        """
-        Method to estimate seasons
-
-        Parameters
-        --------------
-       obs: numpy array
-          array of observations
-        season_gap: float, opt
-          minimal gap required to define a season (default: 80 days)
-        mjdCol: str, opt
-          col name for MJD infos (default: observationStartMJD)
-
-        Returns
-        ----------
-        original numpy array sorted and season 
-
-        """
-
-        # check wether season has already been estimated
-        if 'season' in obs.dtype.names:
-            return obs, obs['season']
-
-        obs.sort(order=self.mjdCol)
-        season = np.zeros(obs.size, dtype=int)
-
-        if len(obs) == 1:
-            return obs, season
-
-        diff = obs[self.mjdCol][1:]-obs[self.mjdCol][:-1]
-        flag = np.where(diff > self.season_gap)[0]
-        for i, indx in enumerate(flag):
-            season[indx+1:] = i+1
-
-        return obs, season

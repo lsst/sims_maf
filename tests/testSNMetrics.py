@@ -290,26 +290,24 @@ class TestSNmetrics(unittest.TestCase):
                 else:
                     data = np.concatenate((data, dat))
 
-            #print('data generated', len(data))
-
             # this is to mimic healpixilization
             nside = 128
-            area = hp.nside2pixarea(nside, degrees=True)
             # metric instance
             templateDir = None
-            metric = SNNSNMetric(
-                pixArea=area, season=[-1], verbose=False, templateDir=templateDir)
+            metric = SNNSNMetric(season=[-1], verbose=False, templateDir=templateDir)
 
-            time_ref = time.time()
-
-            res = metric.run(data)
+            slicePoint = {'nside': nside}
+            res = metric.run(data, slicePoint=slicePoint)
 
             nSN = res['nSN'].item()
             zlim = res['zlim'].item()
 
-            #print(time.time()-time_ref, nSN, zlim)
-            nSN_ref = 2.523
-            zlim_ref = 0.65
+            # These were the original values, before I replaced the coadd per-night
+            #nSN_ref = 2.523
+            #zlim_ref = 0.65
+            # New values that should probably be checked
+            nSN_ref = 2.029
+            zlim_ref = 0.6
 
             assert(np.isclose(nSN, nSN_ref))
             assert(np.isclose(zlim, zlim_ref))

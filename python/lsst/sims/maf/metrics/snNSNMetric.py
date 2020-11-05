@@ -7,6 +7,14 @@ import numpy.lib.recfunctions as rf
 import time
 from scipy.interpolate import interp1d
 import numpy.lib.recfunctions as nlr
+import healpy as hp
+from scipy.stats import binned_statistic
+
+
+def coaddM5(mags):
+    """Coadded depth, assuming Gaussian noise
+    """
+    return 1.25 * np.log10(np.sum(10.**(0.8*mags)))
 
 
 class SNNSNMetric(BaseMetric):
@@ -38,13 +46,11 @@ class SNNSNMetric(BaseMetric):
      vistimeCol : str,opt
         visit time column name (default : visitTime)
     season : list,opt
-       list of seasons to process (float)(default: -1 = all seasons)
+       list of seasons to process (float)(default: None = all seasons)
     zmin : float,opt
        min redshift for the study (default: 0.0)
     zmax : float,opt
        max redshift for the study (default: 1.2)
-    pixArea: float, opt
-       pixel area (default: 9.6)
     verbose: bool,opt
       verbose mode (default: False)
    ploteffi: bool,opt
@@ -65,8 +71,8 @@ class SNNSNMetric(BaseMetric):
                  mjdCol='observationStartMJD', RACol='fieldRA', DecCol='fieldDec',
                  filterCol='filter', m5Col='fiveSigmaDepth', exptimeCol='visitExposureTime',
                  nightCol='night', obsidCol='observationId', nexpCol='numExposures',
-                 vistimeCol='visitTime', season=[-1], zmin=0.0, zmax=1.2,
-                 pixArea=9.6, verbose=False, ploteffi=False,
+                 vistimeCol='visitTime', season=None, zmin=0.0, zmax=1.2,
+                 verbose=False, ploteffi=False,
                  n_bef=4, n_aft=10, snr_min=5., n_phase_min=1,
                  n_phase_max=1, templateDir=None, zlim_coeff=-1., **kwargs):
 
@@ -76,21 +82,20 @@ class SNNSNMetric(BaseMetric):
         self.RACol = RACol
         self.DecCol = DecCol
         self.exptimeCol = exptimeCol
-        self.seasonCol = 'season'
         self.nightCol = nightCol
         self.obsidCol = obsidCol
         self.nexpCol = nexpCol
         self.vistimeCol = vistimeCol
-        self.pixArea = pixArea
         self.zlim_coeff = zlim_coeff
 
+        self.season = season
+
         cols = [self.nightCol, self.m5Col, self.filterCol, self.mjdCol, self.obsidCol,
-                self.nexpCol, self.vistimeCol, self.exptimeCol, self.seasonCol]
+                self.nexpCol, self.vistimeCol, self.exptimeCol]
 
         super(SNNSNMetric, self).__init__(
             col=cols, metricDtype='object', metricName=metricName, **kwargs)
 
-        self.season = season
         # LC selection parameters
         self.n_bef = n_bef  # nb points before peak
         self.n_aft = n_aft  # nb points after peak
@@ -107,7 +112,7 @@ class SNNSNMetric(BaseMetric):
             self.lcFast[key] = LCfast(vals, key[0], key[1], telescope,
                                       self.mjdCol, self.RACol, self.DecCol,
                                       self.filterCol, self.exptimeCol,
-                                      self.m5Col, self.seasonCol, self.nexpCol,
+                                      self.m5Col, 'season', self.nexpCol,
                                       self.snr_min)
 
         # loading parameters
@@ -136,7 +141,7 @@ class SNNSNMetric(BaseMetric):
         self.bad = np.rec.fromrecords([(-1.0, -1.0)], names=['nSN', 'zlim'])
         # self.bad = {'nSN': -1.0, 'zlim': -1.0}
 
-    def run(self, dataSlice,  slicePoint=None):
+    def run(self, dataSlice, slicePoint=None):
         """
         run method of the metric
 
@@ -146,46 +151,31 @@ class SNNSNMetric(BaseMetric):
           data to process
 
         """
-        idarray = None
-        healpixID = -1
-        if slicePoint is not None:
-            if 'nside' in slicePoint.keys():
-                import healpy as hp
-                self.pixArea = hp.nside2pixarea(
-                    slicePoint['nside'], degrees=True)
-                r = []
-                names = []
+        self.pixArea = hp.nside2pixarea(slicePoint['nside'], degrees=True)
 
-                healpixID = hp.ang2pix(
-                    slicePoint['nside'], np.rad2deg(slicePoint['ra']), np.rad2deg(slicePoint['dec']), nest=True, lonlat=True)
-                for kk, vv in slicePoint.items():
-                    r.append(vv)
-                    names.append(kk)
-                idarray = np.rec.fromrecords([r], names=names)
-        else:
-            idarray = np.rec.fromrecords([0., 0.], names=['RA', 'Dec'])
+        # Not sure why this needs to get sent along
+        # idarray = np.rec.fromrecords([0., 0.], names=['RA', 'Dec'])
 
         # Two things to do: concatenate data (per band, night) and estimate seasons
-        dataSlice = rf.drop_fields(dataSlice, ['season'])
 
-        dataSlice = self.coadd(pd.DataFrame(dataSlice))
-
-        dataSlice = self.getseason(dataSlice)
+        # Replace single visit depths with coadded depth for the night. 
+        # keep just one observation pre filter-night combination
+        dataSlice = self.coadd(dataSlice)
 
         # get the seasons
-        seasons = self.season
+        dataSlice, seasons = self.seasonCalc(dataSlice)
 
-        # if seasons = -1: process the seasons seen in data
-        if self.season == [-1]:
-            seasons = np.unique(dataSlice[self.seasonCol])
+        if self.season is None:
+            seasons = np.unique(seasons)
 
         # get redshift range for processing
-        zRange = list(np.arange(self.zmin, self.zmax, self.zStep))
+        zRange = np.arange(self.zmin, self.zmax, self.zStep)
         if zRange[0] < 1.e-6:
             zRange[0] = 0.01
 
         self.zRange = np.unique(zRange)
         # season infos
+
         dfa = pd.DataFrame(np.copy(dataSlice))
         season_info = dfa.groupby(['season']).apply(
             lambda x: self.seasonInfo(x)).reset_index()
@@ -200,7 +190,7 @@ class SNNSNMetric(BaseMetric):
         # if len(test_season) == 0:
 
         if test_season.empty:
-            return nlr.merge_arrays([idarray, self.bad], flatten=True)
+            return nlr.merge_arrays([self.bad], flatten=True)
         else:
             seasons = test_season['season']
         # print('test_seas', seasons)
@@ -219,7 +209,7 @@ class SNNSNMetric(BaseMetric):
             lambda x: self.calcDaymax(x)).reset_index()
 
         if gen_par.empty:
-            return nlr.merge_arrays([idarray, self.bad], flatten=True)
+            return nlr.merge_arrays([self.bad], flatten=True)
         resdf = pd.DataFrame()
 
         for seas in seasons:
@@ -233,7 +223,7 @@ class SNNSNMetric(BaseMetric):
         # and nsn_med for z<zlim
 
         if resdf.empty:
-            return nlr.merge_arrays([idarray, self.bad], flatten=True)
+            return nlr.merge_arrays([self.bad], flatten=True)
 
         resdf = resdf.round({'zlim': 3, 'nsn_med': 3})
         x1_ref = -2.0
@@ -247,14 +237,14 @@ class SNNSNMetric(BaseMetric):
             zlim = resdf[idx]['zlim'].median()
             nSN = resdf[idx]['nsn_med'].sum()
 
-            resd = np.rec.fromrecords([(nSN, zlim, healpixID)], names=[
-                                      'nSN', 'zlim', 'healpixID'])
+            resd = np.rec.fromrecords([(nSN, zlim)], names=[
+                                      'nSN', 'zlim'])
 
-            res = nlr.merge_arrays([idarray, resd], flatten=True)
+            res = nlr.merge_arrays([resd], flatten=True)
 
         else:
 
-            res = nlr.merge_arrays([idarray, self.bad], flatten=True)
+            res = nlr.merge_arrays([self.bad], flatten=True)
 
         return res
 
@@ -270,82 +260,44 @@ class SNNSNMetric(BaseMetric):
 
         return np.median(metricVal['zlim'])
 
-    def coadd(self, data):
+    def coadd(self, dataSlice):
         """
         Method to coadd data per band and per night
 
         Parameters
         ---------------
-        data: pandas df of observations
+        dataSlice : np.array
 
         Returns
         -----------
-        coadded data (pandas df)
+        dataSlice, with m5Col replaced with m5 coadded in the night
 
         """
 
-        keygroup = [self.filterCol, self.nightCol]
+        dataSlice.sort(order=[self.nightCol, self.filterCol])
 
-        data.sort_values(by=keygroup, ascending=[
-                         True, True], inplace=True)
+        filters = np.unique(dataSlice[self.filterCol])
 
-        coadd_df = data.groupby(keygroup).agg({self.nexpCol: ['sum'],
-                                               self.vistimeCol: ['sum'],
-                                               self.exptimeCol: ['sum'],
-                                               self.mjdCol: ['mean'],
-                                               self.RACol: ['mean'],
-                                               self.DecCol: ['mean'],
-                                               self.m5Col: ['mean']}).reset_index()
+        for filtername in filters:
+            infilt = np.where(dataSlice[self.filterCol] == filtername)[0]
+            unight, indices = np.unique(dataSlice[self.nightCol][infilt], return_inverse=True)
+            right = unight+0.5
+            bins = [unight[0]-0.5] + right.tolist()
+            coadds, be, bn = binned_statistic(dataSlice[self.nightCol][infilt],
+                                              dataSlice[self.m5Col][infilt], bins=bins,
+                                              statistic=coaddM5)
+            # now we just clobber the m5Col with the coadd for the night
+            dataSlice[self.m5Col][infilt] = coadds[indices]
+            # Note, we could also clobber exposure MJD, exposure time, etc. But I don't think they
+            # get used later, so maybe OK.
 
-        coadd_df.columns = [self.filterCol, self.nightCol, self.nexpCol,
-                            self.vistimeCol, self.exptimeCol, self.mjdCol,
-                            self.RACol, self.DecCol, self.m5Col]
+        # Make a string that is the combination of night and filter
+        night_filt = np.char.add(dataSlice[self.nightCol].astype(str), dataSlice[self.filterCol].astype(str))
+        u_nf, indx = np.unique(night_filt, return_index=True)
+        dataSlice = dataSlice[indx]
+        dataSlice.sort(order=[self.nightCol])
 
-        coadd_df.loc[:, self.m5Col] += 1.25 * \
-            np.log10(coadd_df[self.vistimeCol]/30.)
-
-        coadd_df.sort_values(by=[self.filterCol, self.nightCol], ascending=[
-                             True, True], inplace=True)
-
-        return coadd_df.to_records(index=False)
-
-    def getseason(self, obs, season_gap=80., mjdCol='observationStartMJD'):
-        """
-        Method to estimate seasons
-        Parameters
-        --------------
-        obs: numpy array
-          array of observations
-        season_gap: float, opt
-         minimal gap required to define a season (default: 80 days)
-        mjdCol: str, opt
-        col name for MJD infos (default: observationStartMJD)
-
-        Returns
-        ----------
-        original numpy array with seasonnumber appended
-        """
-
-        # check wether season has already been estimated
-
-        if 'season' in obs.dtype.names:
-            return obs
-
-        obs.sort(order=mjdCol)
-
-        seasoncalc = np.ones(obs.size, dtype=int)
-
-        if len(obs) > 1:
-            diff = np.diff(obs[mjdCol])
-            flag = np.where(diff > season_gap)[0]
-
-            if len(flag) > 0:
-                for i, indx in enumerate(flag):
-                    seasoncalc[indx+1:] = i+2
-
-        obs = rf.append_fields(obs, 'season', seasoncalc)
-
-        return obs
+        return dataSlice
 
     def seasonInfo(self, grp):
         """
