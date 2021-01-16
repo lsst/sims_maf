@@ -29,7 +29,8 @@ baseDefaultPlotDict = {'title': None, 'xlabel': None, 'label': None,
                        'cbarFormat': None, 'cmap': perceptual_rainbow, 'cbar_edge': True, 'nTicks': 10,
                        'colorMin': None, 'colorMax': None,
                        'xMin': None, 'xMax': None, 'yMin': None, 'yMax': None,
-                       'labelsize': None, 'fontsize': None, 'figsize': None, 'subplot': 111}
+                       'labelsize': None, 'fontsize': None, 'figsize': None, 'subplot': 111,
+                       'maskBelow': None}
 
 
 def setColorLims(metricValue, plotDict):
@@ -120,8 +121,17 @@ class HealpixSkyMap(BasePlotter):
             metricValue = _healbin(slicer.slicePoints['ra'], slicer.slicePoints['dec'],
                                    metricValueIn.filled(slicer.badval), nside=plotDict['nside'],
                                    reduceFunc=plotDict['reduceFunc'], fillVal=slicer.badval)
-            metricValue = ma.array(metricValue)
+            mask = np.zeros(metricValue.size)
+            mask[np.where(metricValue == slicer.badval)] = 1
+            metricValue = ma.array(metricValue, mask=mask)
             metricValue = applyZPNorm(metricValue, plotDict)
+
+        if plotDict['maskBelow'] is not None:
+            toMask = np.where(metricValue <= plotDict['maskBelow'])[0]
+            metricValue.mask[toMask] = True
+            badval = hp.UNSEEN
+        else:
+            badval = slicer.badval
 
         # Generate a Mollweide full-sky plot.
         fig = plt.figure(fignum, figsize=plotDict['figsize'])
@@ -147,7 +157,7 @@ class HealpixSkyMap(BasePlotter):
             notext = True
         else:
             notext = False
-            
+
         visufunc_params = {'title': plotDict['title'],
                            'cbar': False,
                            'min': clims[0],
@@ -161,8 +171,8 @@ class HealpixSkyMap(BasePlotter):
                            'fig':fig.number,
                            'notext': notext}
         visufunc_params.update(self.healpy_visufunc_params)
-        self.healpy_visufunc(metricValue.filled(slicer.badval), **visufunc_params)
-        
+        self.healpy_visufunc(metricValue.filled(badval), **visufunc_params)
+
         # Add a graticule (grid) over the globe.
         hp.graticule(dpar=30, dmer=30, verbose=False)
         # Add colorbar (not using healpy default colorbar because we want more tickmarks).
