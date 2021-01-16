@@ -18,12 +18,19 @@ __all__ = ['NormAirmassStacker', 'ParallaxFactorStacker', 'HourAngleStacker',
 
 
 class SaturationStacker(BaseStacker):
-    """Calculate the saturation limit of a point source
+    """Calculate the saturation limit of a point source. Assumes Guassian PSF.
 
     pixscale : float (0.2)
         Acrsec per pixel
     gain : 2.3
         electrons per adu
+    saturation_e : float (90e3)
+        The saturation level in electrons
+    zeropoints : dict-like (None)
+        The zeropoints for the telescope. Keys should be str with filter names, values in mags.
+        If None, will use Rubin-like zeropoints
+    km : dict-like (None)
+        Atmospheric extinction values.  Keys should be str with filter names.
     """
     colsAdded = ['saturation_mag']
 
@@ -41,13 +48,11 @@ class SaturationStacker(BaseStacker):
         self.airmassCol = airmassCol
         self.saturation_adu = saturation_e/gain
         self.pixscale = 0.2
+        names = ['u', 'g', 'r', 'i', 'z', 'y']
+        types = [float]*6
         if zeropoints is None:
-            names = ['u', 'g', 'r', 'i', 'z', 'y']
-            types = [float]*6
-            # Counts at airmass 1, 30s? grabbed from:
             # https://github.com/lsst-pst/syseng_throughputs/blob/master/notebooks/Syseng%20Throughputs%20Repo%20Demo.ipynb
-            self.zeropoints = np.array([27.03, 28.38, 28.15, 27.86, 27.46, 26.68])
-            self.zeropoints = self.zeropoints.view(list(zip(names, types)))
+            self.zeropoints = np.array([27.03, 28.38, 28.15, 27.86, 27.46, 26.68]).view(list(zip(names, types)))
         else:
             self.zeropoints = zeropoints
 
@@ -64,10 +69,10 @@ class SaturationStacker(BaseStacker):
             sky_counts = sky_counts * simData[self.exptimeCol][in_filt]/simData[self.nexpCol][in_filt]
             remaining_counts_peak = (self.saturation_adu - sky_counts)
             # Now to figure out how many counts there would be total, if there are that many in the peak
-            sigma = 2.354*simData[self.seeingCol]
-            source_counts = remaining_counts_peak *2.*np.pi*(sigma/self.pixscale)**2
+            sigma = simData[self.seeingCol]/2.354
+            source_counts = remaining_counts_peak * 2.*np.pi*(sigma/self.pixscale)**2
 
-            count_rate = source_counts * simData[self.nexpCol]/simData[self.exptimeCol]
+            count_rate = source_counts / simData[self.nexpCol] / simData[self.exptimeCol]
             simData['saturation_mag'][in_filt] = -2.5*np.log10(count_rate) + self.zeropoints[filtername]
             # Airmass correction
             simData['saturation_mag'][in_filt] -= self.km[filtername]*(simData[self.airmassCol] - 1.)
