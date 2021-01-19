@@ -28,9 +28,9 @@ class SaturationStacker(BaseStacker):
         The saturation level in electrons
     zeropoints : dict-like (None)
         The zeropoints for the telescope. Keys should be str with filter names, values in mags.
-        If None, will use Rubin-like zeropoints
+        If None, will use Rubin-like zeropoints.
     km : dict-like (None)
-        Atmospheric extinction values.  Keys should be str with filter names.
+        Atmospheric extinction values.  Keys should be str with filter names. If None, will use Rubin-like zeropoints.
     """
     colsAdded = ['saturation_mag']
 
